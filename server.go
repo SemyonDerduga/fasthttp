@@ -179,7 +179,7 @@ type Server struct {
 	//
 	// The default is to automatically read request bodies of Expect 100 Continue requests
 	// like they are normal requests.
-	ContinueHandler func(header *RequestHeader) bool
+	ContinueHandler func(ctx *RequestCtx) bool
 
 	// Server name for sending in response headers.
 	//
@@ -2315,12 +2315,15 @@ func (s *Server) serveConn(c net.Conn) (err error) {
 		if ctx.Request.MayContinue() {
 			// Allow the ability to deny reading the incoming request body
 			if s.ContinueHandler != nil {
-				if continueReadingRequest = s.ContinueHandler(&ctx.Request.Header); !continueReadingRequest {
+				if continueReadingRequest = s.ContinueHandler(ctx); !continueReadingRequest {
 					if br != nil {
 						br.Reset(ctx.c)
 					}
 
-					ctx.SetStatusCode(StatusExpectationFailed)
+					// Custom response handling based on ContinueHandler's return value
+                                        if ctx.Response.StatusCode() == 0 {
+                                                ctx.SetStatusCode(StatusExpectationFailed)
+                                        }
 				}
 			}
 
