@@ -2676,40 +2676,47 @@ func AcquireWriter(ctx *RequestCtx) *bufio.Writer {
 	return w
 }
 
-func HandleContinueReadRequest(ctx *RequestCtx, br *bufio.Reader, bw *bufio.Writer, maxRequestBodySize int, serverName []byte, reduceMemoryUsage bool, streamRequestBody bool, disablePreParseMultipartForm bool) (err error) {
-    if bw == nil {
-        bw = acquireWriter(ctx)
-    }
-    // Send 'HTTP/1.1 100 Continue' response.
-    _, err = bw.Write(strResponseContinue)
-    if err != nil {
-        return err
-    }
-    err = bw.Flush()
-    if err != nil {
-        return err
-    }
-    if reduceMemoryUsage {
-        releaseWriter(ctx, bw)
-        bw = nil
-    }
-    // Read request body.
-    if br == nil {
-        br = acquireReader(ctx)
-    }
-    if streamRequestBody {
-        err = ctx.Request.ContinueReadBodyStream(br, maxRequestBodySize, !disablePreParseMultipartForm)
-    } else {
-        err = ctx.Request.ContinueReadBody(br, maxRequestBodySize, !disablePreParseMultipartForm)
-    }
-    if (reduceMemoryUsage && br.Buffered() == 0) || err != nil {
-        releaseReader(ctx, br)
-        br = nil
-    }
-    if err != nil {
-        bw = ctx.s.writeErrorResponse(ctx, bw, serverName, err)
-    }
-    return err
+func (ctx *RequestCtx) SendContinue(maxRequestBodySize int, disablePreParseMultipartForm bool) (err error) {
+	s := ctx.s
+	serverName := s.getServerName()
+	
+	var bw *bufio.Writer
+	if bw == nil {
+		bw = acquireWriter(ctx)
+	}
+
+	// Send 'HTTP/1.1 100 Continue' response.
+	_, err = bw.Write([]byte("HTTP/1.1 100 Continue\r\n\r\n"))
+	if err != nil {
+		return
+	}
+	err = bw.Flush()
+	if err != nil {
+		return
+	}
+	if s.ReduceMemoryUsage {
+		releaseWriter(s, bw)
+		bw = nil
+	}
+
+	// Read request body.
+	var br *bufio.Reader
+	if br == nil {
+		br = acquireReader(ctx)
+	}
+	if s.StreamRequestBody {
+		err = ctx.Request.ContinueReadBodyStream(br, maxRequestBodySize, !disablePreParseMultipartForm)
+	} else {
+		err = ctx.Request.ContinueReadBody(br, maxRequestBodySize, !disablePreParseMultipartForm)
+	}
+	if (s.ReduceMemoryUsage && br.Buffered() == 0) || err != nil {
+		releaseReader(s, br)
+		br = nil
+	}
+	if err != nil {
+		bw = s.writeErrorResponse(bw, ctx, serverName, err)
+	}
+	return
 }
 
 
