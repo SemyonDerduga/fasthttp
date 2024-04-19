@@ -2662,6 +2662,20 @@ func acquireWriter(ctx *RequestCtx) *bufio.Writer {
 	return w
 }
 
+func AcquireWriter(ctx *RequestCtx) *bufio.Writer {
+	v := ctx.s.writerPool.Get()
+	if v == nil {
+		n := ctx.s.WriteBufferSize
+		if n <= 0 {
+			n = defaultWriteBufferSize
+		}
+		return bufio.NewWriterSize(ctx.c, n)
+	}
+	w := v.(*bufio.Writer)
+	w.Reset(ctx.c)
+	return w
+}
+
 func releaseWriter(s *Server, w *bufio.Writer) {
 	s.writerPool.Put(w)
 }
