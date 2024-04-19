@@ -2676,6 +2676,43 @@ func AcquireWriter(ctx *RequestCtx) *bufio.Writer {
 	return w
 }
 
+func HandleContinueReadRequest(ctx *RequestCtx, br *bufio.Reader, bw *bufio.Writer, maxRequestBodySize int, serverName []byte, reduceMemoryUsage bool, streamRequestBody bool, disablePreParseMultipartForm bool) (err error) {
+    if bw == nil {
+        bw = acquireWriter(ctx)
+    }
+    // Send 'HTTP/1.1 100 Continue' response.
+    _, err = bw.Write(strResponseContinue)
+    if err != nil {
+        return err
+    }
+    err = bw.Flush()
+    if err != nil {
+        return err
+    }
+    if reduceMemoryUsage {
+        releaseWriter(ctx, bw)
+        bw = nil
+    }
+    // Read request body.
+    if br == nil {
+        br = acquireReader(ctx)
+    }
+    if streamRequestBody {
+        err = ctx.Request.ContinueReadBodyStream(br, maxRequestBodySize, !disablePreParseMultipartForm)
+    } else {
+        err = ctx.Request.ContinueReadBody(br, maxRequestBodySize, !disablePreParseMultipartForm)
+    }
+    if (reduceMemoryUsage && br.Buffered() == 0) || err != nil {
+        releaseReader(ctx, br)
+        br = nil
+    }
+    if err != nil {
+        bw = ctx.s.writeErrorResponse(ctx, bw, serverName, err)
+    }
+    return err
+}
+
+
 func releaseWriter(s *Server, w *bufio.Writer) {
 	s.writerPool.Put(w)
 }
